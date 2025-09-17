@@ -16,8 +16,10 @@
 ## TL;DR
 
 We present RobusTok, a new image tokenizer with a two-stage training scheme:
-Main training → constructs a robust latent space
-Post-training → aligns the generator’s latent distribution with its image space
+
+Main training → constructs a robust latent space.
+
+Post-training → aligns the generator’s latent distribution with its image space.
 
 ## Key highlights of Post-Training
 
