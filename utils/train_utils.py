@@ -967,19 +967,6 @@ def save_checkpoint(model, output_dir, accelerator, global_step, logger) -> Path
 
     accelerator.save_state(save_path)
 
-    if accelerator.is_main_process:
-        repo_id = "qiuk6/RAR"
-
-        hf_token = "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"
-
-        upload_folder(
-            folder_path=str(save_path),
-            path_in_repo=str(save_path),
-            repo_id=repo_id,
-            repo_type="model",
-            token=hf_token
-        )
-
     return save_path
 
 

@@ -174,17 +174,6 @@ def main():
             ema_model.copy_to(model.parameters())
         model.save_pretrained_weight(output_dir)
 
-        repo_id = "qiuk6/RAR"
-
-        hf_token = "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"
-
-        upload_file(
-            path_or_fileobj=f"{output_dir}/pytorch_model.bin",
-            path_in_repo=f"{output_dir}/pytorch_model.bin",
-            repo_id=repo_id,
-            token=hf_token,
-        )
-
     accelerator.end_training()
 
 
