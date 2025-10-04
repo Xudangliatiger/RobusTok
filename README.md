@@ -163,7 +163,7 @@ torchrun --nproc_per_node=8 tokenizer/tokenizer_image/xqgan_post_train.py --conf
 
 ---
 
-## inference Code
+## Inference Code
 
 ```
 # Reproducing RAR-B
