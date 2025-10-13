@@ -87,7 +87,7 @@ class Attention(nn.Module):
         self.k_cache = None
         self.v_cache = None
 
-    def forward(self, x: torch.Tensor, attn_mask=None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, attn_mask=None, kv_cache_perturbation_degree=None) -> torch.Tensor:
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv.unbind(0)
@@ -99,6 +99,8 @@ class Attention(nn.Module):
                 v_cache = v
             else:
                 assert N in [1, 2], f"x.shape {x.shape}"
+                if kv_cache_perturbation_degree is not None:
+                    self.v_cache[self.v_cache.shape[0]//2:, :, 1:, :] *= kv_cache_perturbation_degree[:, None, :, None]
                 k_cache = torch.cat([self.k_cache, k], dim=-2)
                 v_cache = torch.cat([self.v_cache, v], dim=-2)
 
@@ -176,9 +178,13 @@ class Block(nn.Module):
         )
 
 
-    def forward(self, x: torch.Tensor, attn_mask=None, c = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, attn_mask=None, c = None, kv_cache_perturbation_degree=None) -> torch.Tensor:
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=-1)
-        x = x + gate_msa * self.attn(modulate(self.norm1(x), shift_msa, scale_msa), attn_mask=attn_mask)
+        x = x + gate_msa * self.attn(
+            modulate(self.norm1(x), shift_msa, scale_msa),
+            attn_mask=attn_mask,
+            kv_cache_perturbation_degree=kv_cache_perturbation_degree,
+        )
         x = x + gate_mlp * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
         return x
 
@@ -319,7 +325,8 @@ class RAR(BaseModel):
     def forward_fn(self, input_ids, condition,
                    return_labels=False,
                    orders=None,
-                   is_sampling=False):
+                   is_sampling=False,
+                   kv_cache_perturbation_degree=None):
         # TODO: optimize the inference time where the computation of pos_embed etc can be shared across sampling steps.
         # Token space:
         #  [0, codebook_size - 1]                       : those are the learned quantized image tokens
@@ -387,9 +394,9 @@ class RAR(BaseModel):
         for idx, blk in enumerate(self.blocks):
             if self.use_checkpoint:
                 x = torch.utils.checkpoint.checkpoint(
-                        blk.forward, x, attn_mask, condition_token, use_reentrant=False)
+                        blk.forward, x, attn_mask, condition_token, kv_cache_perturbation_degree, use_reentrant=False)
             else:
-                x = blk(x, attn_mask=attn_mask, c=condition_token)
+                x = blk(x, attn_mask=attn_mask, c=condition_token, kv_cache_perturbation_degree=kv_cache_perturbation_degree)
 
         if not self.blocks[0].attn.kv_cache:
             # remove cls token
@@ -407,12 +414,14 @@ class RAR(BaseModel):
     @torch.no_grad()
     def generate(self,
                 condition,
-                tf_tokens,
-                guidance_scale,
-                randomize_temperature,
-                guidance_scale_pow,
+                tf_tokens=None,
+                guidance_scale=0.0,
+                randomize_temperature=1.0,
+                guidance_scale_pow=1.0,
                 kv_cache=True,
                 prob=None,
+                step_norm=True,
+                softcfg_strength=1,
                 **kwargs):
         condition = self.preprocess_condition(
             condition, cond_drop_prob=0.0)
@@ -430,7 +439,8 @@ class RAR(BaseModel):
 
         orders = None
         cfg_orders = None
-
+        confidence = None
+        kv_weight = None
 
         for step in range(self.image_seq_len):
             # ref: https://github.com/sail-sg/MDT/blob/441d6a1d49781dbca22b708bbd9ed81e9e3bdee4/masked_diffusion/models.py#L513C13-L513C23
@@ -441,10 +451,12 @@ class RAR(BaseModel):
 
 
             if guidance_scale != 0:
+                kv_cache_perturbation_degree = kv_weight if softcfg_strength > 0 else None
                 logits = self.forward_fn(
                     torch.cat([ids, ids], dim=0),
                     torch.cat([condition, self.get_none_condition(condition)], dim=0),
-                    orders=cfg_orders, is_sampling=True)
+                    orders=cfg_orders, is_sampling=True,
+                    kv_cache_perturbation_degree=kv_cache_perturbation_degree)
                 cond_logits, uncond_logits = logits[:num_samples], logits[num_samples:]
                 logits = uncond_logits + (cond_logits - uncond_logits) * cfg_scale
             else:
@@ -462,7 +474,27 @@ class RAR(BaseModel):
                 sampled = torch.where(masks[:,step], tf_tokens[:, step], sampled)
             ids = torch.cat((ids, sampled), dim = -1)
 
+            if guidance_scale != 0 and softcfg_strength > 0:
+                probs_cond = F.softmax(cond_logits[:, -1] / randomize_temperature, dim=-1)
+                max_probs_cond = probs_cond.max(dim=-1, keepdim=True)[0]
+
+                if step == 0:
+                    confidence = torch.zeros_like(max_probs_cond)
+                else:
+                    confidence = torch.cat([confidence, max_probs_cond], dim=1)
+
+                kv_weight = 1 - confidence
+
+                if step_norm and step > 0:
+                    last_step_confidence = 1 - confidence[:, 1:-1] / (confidence[:, 1:-1].sum(dim=-1, keepdim=True) + 1e-5)
+                    last_step_confidence[last_step_confidence < 0.05] = 0.05
+
+                    kv_weight[:, 1:] = 1 - confidence[:, 1:] / (confidence[:, 1:].sum(dim=-1, keepdim=True) + 1e-5)
+                    kv_weight[kv_weight < 0.05] = 0.05
+                    kv_weight[:, 1:-1] /= last_step_confidence
+                else:
+                    kv_weight[:, :-1] = 1
+
         self.disable_kv_cache()
         return ids
   
-

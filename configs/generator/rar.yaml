@@ -49,6 +49,8 @@ model:
         guidance_scale: 16.0
         guidance_scale_pow: 2.75
         use_checkpoint: False # True to save memory
+        step_norm: True
+        softcfg_strength: 0
 
         randomness_anneal_start: 125000 # 200 epoch
         randomness_anneal_end: 187500 # 300 epoch

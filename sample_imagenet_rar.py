@@ -132,7 +132,9 @@ def main():
             randomize_temperature=config.model.generator.randomize_temperature,
             guidance_scale=config.model.generator.guidance_scale,
             guidance_scale_pow=config.model.generator.guidance_scale_pow,
-            device=device
+            device=device,
+            step_norm=config.model.generator.get('step_norm', True),
+            softcfg_strength=config.model.generator.get('softcfg_strength', 0)
         )
         # Save samples to disk as individual .png files
         for i, sample in enumerate(samples):

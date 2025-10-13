@@ -85,7 +85,9 @@ def sample_fn(generator,
               softmax_temperature_annealing=False,
               num_sample_steps=8,
               device="cuda",
-              return_tensor=False):
+              return_tensor=False,
+              step_norm=True,
+              softcfg_strength=1):
     generator.eval()
     tokenizer.eval()
     if labels is None:
@@ -102,7 +104,9 @@ def sample_fn(generator,
         guidance_scale_pow=guidance_scale_pow,
         randomize_temperature=randomize_temperature,
         softmax_temperature_annealing=softmax_temperature_annealing,
-        num_sample_steps=num_sample_steps)
+        num_sample_steps=num_sample_steps,
+        step_norm=step_norm,
+        softcfg_strength=softcfg_strength)
     
     qzshape = [len(labels), 64, 16, 16]
     
@@ -131,7 +135,9 @@ def sample_fn_with_tf(generator,
              softmax_temperature_annealing=False,
              num_sample_steps=8,
              device="cuda",
-             return_tensor=False):
+             return_tensor=False,
+             step_norm=True,
+             softcfg_strength=1):
     generator.eval()
     tokenizer.eval()
     if labels is None:
@@ -153,7 +159,9 @@ def sample_fn_with_tf(generator,
        guidance_scale_pow=guidance_scale_pow,
        randomize_temperature=randomize_temperature,
        softmax_temperature_annealing=softmax_temperature_annealing,
-       num_sample_steps=num_sample_steps)
+       num_sample_steps=num_sample_steps,
+       step_norm=step_norm,
+       softcfg_strength=softcfg_strength)
   
     qzshape = [len(labels), 64, 16, 16]
   
