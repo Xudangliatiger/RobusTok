@@ -84,11 +84,27 @@ def main():
     torch.cuda.set_device(device)
     print(f"Starting rank={rank}, seed={seed}, world_size={dist.get_world_size()}.") 
 
+    tokenizer_weight = config.model.get("pretrained_tokenizer_weight", None)
+    if tokenizer_weight is None:
+        tokenizer_weight = config.model.vq_model.get("pretrained_tokenizer_weight", None)
+    if tokenizer_weight is None:
+        raise ValueError("`model.vq_model.pretrained_tokenizer_weight` must be specified in the config.")
+
+    generator_ckpt = config.experiment.generator_checkpoint
+
     if rank == 0:
-        # download the maskgit-vq tokenizer
-        hf_hub_download(repo_id="fun-research/TiTok", filename=f"{config.model.vq_model.pretrained_tokenizer_weight}", local_dir="./")
-        # download the rar generator weight
-        hf_hub_download(repo_id="yucornetto/RAR", filename=f"{config.experiment.generator_checkpoint}", local_dir="./")
+        if not os.path.isfile(tokenizer_weight):
+            hf_hub_download(
+                repo_id="fun-research/TiTok",
+                filename=f"{tokenizer_weight}",
+                local_dir="./"
+            )
+        if not os.path.isfile(generator_ckpt):
+            hf_hub_download(
+                repo_id="yucornetto/RAR",
+                filename=f"{generator_ckpt}",
+                local_dir="./"
+            )
     dist.barrier()
 
     # maskgit-vq as tokenizer

@@ -10,6 +10,7 @@ experiment:
     resume: True
 
 model:
+    pretrained_tokenizer_weight: checkpoints/post-train.pt
     vq_ckpt: /path/to/RobustTok.pt
     ema: true
     vq_model:
@@ -34,10 +35,10 @@ model:
         lfq: false        
     
     generator:
-        hidden_size: 768
+        hidden_size: 1024
         num_hidden_layers: 24
         num_attention_heads: 16
-        intermediate_size: 3072
+        intermediate_size: 4096
         dropout: 0.1
         attn_drop: 0.1
         class_label_dropout: 0.1
@@ -46,8 +47,8 @@ model:
 
         # sampling hyper-params for RAR-B
         randomize_temperature: 1.0
-        guidance_scale: 16.0
-        guidance_scale_pow: 2.75
+        guidance_scale: 6.75
+        guidance_scale_pow: 1.01
         use_checkpoint: False # True to save memory
         step_norm: True
         softcfg_strength: 0
